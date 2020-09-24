@@ -1,0 +1,4 @@
+name = "ProbabilisticCircuits"
+uuid = "fa12af2f-7bc6-4844-8778-91f04be8398f"
+authors = ["Martin Trapp <trapp.martin@gmail.com>"]
+version = "0.1.0"
