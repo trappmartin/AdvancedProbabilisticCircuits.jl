@@ -2,3 +2,10 @@ name = "ProbabilisticCircuits"
 uuid = "fa12af2f-7bc6-4844-8778-91f04be8398f"
 authors = ["Martin Trapp <trapp.martin@gmail.com>"]
 version = "0.1.0"
+
+[deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
+Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+StatsFuns = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
