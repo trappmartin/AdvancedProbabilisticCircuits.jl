@@ -1,12 +1,14 @@
 module ProbabilisticCircuits
 
 using Reexport
-
 using MacroTools
 using StatsFuns
+using Crayons
+using Crayons.Box
+
+import Base.show
 
 @reexport using Distributions
-
 
 export @circuit
 
