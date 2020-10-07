@@ -1,3 +1,6 @@
+export isdecomposable, issmooth, isdeterministic
+export scope, support, joinsupport, isdisjointsupport
+
 export Prod, Sum, Leaf
 export AbstractNode, Node, SumNode, ProductNode
 export Decomposability, Smoothness, Determinism, Invertability, NodeProperties
@@ -73,7 +76,9 @@ function _build_node(n::Type{N}, params::Vector{T}, ns::AbstractNode...) where {
     check_smooth(children) && push!(prop_, Smoothness())
     check_decomposable(children) && push!(prop_, Decomposability())
     check_determinism(children) && push!(prop_, Determinism())
-    support_ = N == SumNode ? reduce(joinsupport, children) : reduce(vcat, scope.(children))
+    supports_ = N == SumNode ? Dict(reduce(joinsupport, children)) : Dict(reduce(vcat, support.(children)))
+
+    support_ = scope_ isa Int ? supports_[1] : [supports_[s] for s in scope_]
 
     return Node{T,typeof(scope_),typeof(support_),N}(scope_, support_, children, params, prop_)
 end
@@ -92,32 +97,41 @@ end
 (n::Node{T,V,S,SumNode})(x::AbstractVector) where {T<:Number,V,S} = logsumexp(n.params[i]+c(x) for (i,c) in enumerate(n.children))
 (n::Node{T,V,S,SumNode})(x::AbstractMatrix) where {T<:Number,V,S} = logsumexp(mapreduce(((w,c),) -> w.+c(x), hcat, zip(n.params, n.children)), dims=2)
 
-struct Leaf{T<:Union{Vector{Int},Int},D<:Distribution} <: AbstractNode
+# --
+# -- Leaf nodes --
+# --
+
+struct Leaf{T<:Union{Vector{Int},Int},D<:UnivariateDistribution} <: AbstractNode
     scope::T
     dist::D
 end
 Leaf(dist::UnivariateDistribution, scope::Int) = Leaf(scope, dist)
-Leaf(dist::UnivariateDistribution, scope...) = Leaf(unique(scope), Product([dist for _ in unique(scope)]))
-Leaf(dist::Distribution, scope...) = Leaf(unique(scope), dist)
-Leaf(dist::Distribution, scope::AbstractRange) = Leaf(dist, collect(scope)...)
+Leaf(dist::UnivariateDistribution, scope...) = Leaf(unique(scope), dist)
+Leaf(dist::UnivariateDistribution, scope::AbstractRange) = Leaf(dist, collect(scope)...)
 
 function prettyprint(io::IO, node::Leaf{T,D}, level::Int) where {T,D}
     print(io, string(repeat('\t', level), D, " - scope: $(node.scope)"))
 end
 descendants(n::Leaf, N2; level = Inf) = []
 
-(n::Leaf{Int,<:UnivariateDistribution})(x::T) where {T<:AbstractVector} = logpdf(n.dist, scope(n))
+(n::Leaf{Int,<:UnivariateDistribution})(x::T) where {T<:AbstractVector} = logpdf(n.dist, x[scope(n)])
 function (n::Leaf{Int,<:UnivariateDistribution})(x::T) where {T<:AbstractArray}
     scope(n) > size(x,1) && throw(ErrorException())
     return logpdf(n.dist, view(x,scope(n),:))
 end
 
-function (n::Leaf{Vector{Int},<:MultivariateDistribution})(x::T) where {T<:AbstractArray}
+(n::Leaf{Vector{Int},<:UnivariateDistribution})(x::T) where {T<:AbstractVector} = sum(logpdf(n.dist, x[s]) for s in scope(n))
+function (n::Leaf{Vector{Int},<:UnivariateDistribution})(x::T) where {T<:AbstractArray}
     maximum(scope(n)) > size(x,1) && throw(ErrorException())
-    return logpdf(n.dist, view(x,scope(n),:))
+    return sum(logpdf(n.dist, view(x,s,:)) for s in scope(n))
 end
 
 scope(n::AbstractNode) = n.scope
+
+# --
+# -- Internal functions used to check node properties during construction
+# --
+
 function check_decomposable(ns::AbstractVector{<:AbstractNode})
     d = true
     for i in eachindex(ns)
@@ -158,42 +172,135 @@ function check_determinism(ns::AbstractVector{<:AbstractNode})
 end
 
 
+"""
+    isdecomposable(n)
+
+Return true if the node is decomposable and false otherwise.
+"""
 isdecomposable(n::Node{T,V,S,ProductNode}) where {T,V,S} = Decomposability() ∈ n.properties
 isdecomposable(n::AbstractNode) = false
 
+"""
+    issmooth(n)
+
+Return true if the node is smooth and false otherwise.
+"""
 issmooth(n::Node{T,V,S,SumNode}) where {T,V,S} = Smoothness() ∈ n.properties
 issmooth(n::AbstractNode) = false
 
+"""
+    isdeterministic(n)
+
+Return true if the node is deterministic and false otherwise.
+"""
 isdeterministic(n::Node{T,V,S,SumNode}) where {T,V,S} = Determinism() ∈ n.properties
 isdeterministic(n::AbstractNode) = false
 
-export isdecomposable, issmooth, isdeterministic
+"""
+    support(n)
 
-support(n::Leaf) = Distributions.support(n.dist)
-support(n::Node) = n.support
+Return the support of the node
+"""
+support(n::Leaf{Int,T}) where T = n.scope => Distributions.support(n.dist)
+support(n::Leaf{<:AbstractVector,T}) where T = [s => Distributions.support(n.dist) for s in n.scope]
+support(n::Node{T,Int,S,N}) where {T,S<:Union{Distributions.RealInterval,Vector{Int}},N} = [n.scope => n.support]
+support(n::Node{T,<:AbstractVector,S,N}) where {T,S,N} = [s => sup for (s, sup) in zip(n.scope, n.support)]
 
-function joinsupport(l1::Leaf, l2::Leaf)
+"""
+    joinsupport(n, n)
+
+Join the support of two nodes.
+"""
+function joinsupport(l1::AbstractNode, l2::AbstractNode)
     if l1.scope != l2.scope
-        if l1.scope isa Int || l2.scope isa Int
-            return vcat(support(l1), support(l2))
-        else
-            throw(ErrorException("Joining non-matching scopes currently not supported."))
-        end
+        return joinsupport_(support(l1), support(l2))
+    else
+        return join(support(l1), support(l2))
     end
-    return joinsupport(support(l1), support(l2))
 end
 
-joinsupport(r1::Vector{Int}, r2::Vector{Int}) = union(r1, r2)
-function joinsupport(r1::Distributions.RealInterval, r2::Distributions.RealInterval)
+joinsupport_(l1::Pair{Int,T1}, l2::Pair{Int,T2}) where {T1,T2} = [l1, l2]
+joinsupport_(l1::Vector{Pair{Int,T1}}, l2::Pair{Int,T2}) where {T1,T2} = joinsupport_(l2,l1)
+function joinsupport_(l1::Pair{Int,T1}, supp::Vector{Pair{Int,T2}}) where {T1,T2}
+    scope1, supp1 = l1
+    scope = [first(s) for s in supp]
+    if scope1 ∈ scope
+        i = findfirst(scope1 .== scope)
+        supp[i] = join(l1, supp[i])
+    else
+        push!(supp, l1)
+    end
+    return supp
+end
+function joinsupport_(supp1::Vector{Pair{Int,T1}}, supp::Vector{Pair{Int,T2}}) where {T1,T2}
+    L = length(supp1)
+    scope = [first(s) for s in supp]
+    for i in 1:L
+        s1, sup1 = supp1[i]
+        if s1 ∈ scope
+            j = findfirst(s1 .== scope)
+            supp[j] = join(supp1[i], supp[j])
+        else
+            push!(supp, supp1[i])
+        end
+    end
+    return supp
+end
+
+function join(p1::Pair{Int,T1}, p2::Vector{Pair{Int,T2}}) where {T1,T2}
+    l1,r1 = p1
+    p = copy(p2)
+    scope = [first(s) for s in p2]
+    j = findfirst(l1 .== scope)
+    j == nothing && throw(ErrorException("Unexpected error"))
+    p[j] = join(p1, p2[j])
+    return p
+end
+function join(p1::Vector{Pair{Int,T1}}, p2::Vector{Pair{Int,T2}}) where {T1,T2}
+    p = copy(p2)
+    for i in 1:length(p1)
+        l1 = p1[i]
+        p = join(l1, p2)
+    end
+    return p
+end
+
+
+join(p1::Pair{Int,Vector{Int}}, p2::Pair{Int,Vector{Int}}) = first(p1) => union(last(p1), last(p2))
+function join(p1::Pair{Int,Distributions.RealInterval}, p2::Pair{Int,Distributions.RealInterval})
+    l1,r1 = p1
+    l2,r2 = p2
     if r1 == r2
-        return r1
+        return l1 => r1
     elseif isapprox(r1.ub, r2.lb, atol=eps())
-        return Distributions.RealInterval(r1.lb, r2.ub)
+        return l1 => Distributions.RealInterval(r1.lb, r2.ub)
     elseif isapprox(r2.ub, r1.lb, atol=eps())
-        return Distributions.RealInterval(r2.lb, r1.ub)
+        return l1 => Distributions.RealInterval(r2.lb, r1.ub)
+    elseif !isdisjointsupport(r1, r2)
+        return l1 => Distributions.RealInterval(min(r1.lb, r2.lb), max(r1.ub, r2.ub))
     else
         throw(ErrorException("Joining non-adjecent real-supports currently not supported."))
     end
+end
+
+isdisjointsupport(l1::Pair{Int,T},l2::Pair{Int,T}) where {T} = isdisjointsupport(l1[2], l2[2])
+isdisjointsupport(l1::Vector{Pair{Int,T1}}, l2::Pair{Int,T2}) where {T1,T2} = isdisjointsupport(l2,l1)
+function isdisjointsupport(l1::Pair{Int,T1}, l2::Vector{Pair{Int,T2}}) where {T1,T2}
+    r = true
+    for supp in l2
+        s, v = supp
+        if s == first(l1)
+            r &= isdisjointsupport(last(l1), v)
+        end
+    end
+    return r
+end
+function isdisjointsupport(l1::Vector{Pair{Int,T1}}, l2::Vector{Pair{Int,T2}}) where {T1,T2}
+    r = true
+    for supp in l1
+        r &= isdisjointsupport(supp, l2)
+    end
+    return r
 end
 
 isdisjointsupport(r1::Vector{Int}, r2::Vector{Int}) = isdisjoint(r1,r2)
@@ -209,4 +316,3 @@ function isdisjointsupport(r1::Distributions.RealInterval, r2::Distributions.Rea
     end
 end
 
-export joinsupport, support

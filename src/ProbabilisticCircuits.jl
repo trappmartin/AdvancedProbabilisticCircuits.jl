@@ -7,6 +7,7 @@ using Crayons
 using Crayons.Box
 
 import Base.show
+import Distributions.support
 
 @reexport using Distributions
 
