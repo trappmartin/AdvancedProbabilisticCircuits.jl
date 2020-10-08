@@ -1,5 +1,6 @@
 export isdecomposable, issmooth, isdeterministic
 export scope, support, joinsupport, isdisjointsupport
+export partitionfunction
 
 export Prod, Sum, Leaf
 export AbstractNode, Node, SumNode, ProductNode
@@ -20,11 +21,11 @@ struct Invertability <: NodeProperties end
 
 abstract type AbstractNode end
 
-struct Node{T<:Number,V<:Union{Vector{Int},Int},S<:Union{Vector,Distributions.RealInterval},N<:NodeType} <: AbstractNode
+struct Node{T<:AbstractVector{<:Number},V<:Union{Vector{Int},Int},S<:Union{Vector,Distributions.RealInterval},N<:NodeType} <: AbstractNode
     scope::V
     support::S
     children::Vector{AbstractNode}
-    params::Vector{T}
+    params::T
     properties::Vector{NodeProperties}
 end
 
@@ -67,7 +68,7 @@ function descendants(n::Node{T,V,S,N}, N2::Type{<:NodeType}; level = Inf) where 
     return unique(nodes)
 end
 
-function _build_node(n::Type{N}, params::Vector{T}, ns::AbstractNode...) where {T<:Number,N<:NodeType}
+function _build_node(n::Type{N}, params::T, ns::AbstractNode...) where {T<:AbstractVector{<:Number},N<:NodeType}
     children = collect(ns)
     s_ = reduce(union, scope.(children))
     scope_ = length(s_) == 1 ? first(s_) : s_
@@ -87,26 +88,31 @@ Prod(ns::AbstractNode...) = Prod(Float32, ns...)
 function Prod(t::Type{T}, ns::AbstractNode...) where {T<:Number}
     return _build_node(ProductNode, T[], ns...)
 end
-(n::Node{T,V,S,ProductNode})(x::AbstractVector) where {T<:Number,V,S} = sum(c(x) for c in n.children)
-(n::Node{T,V,S,ProductNode})(x::AbstractMatrix) where {T<:Number,V,S} = sum(c(x) for c in n.children)
+(n::Node{T,V,S,ProductNode})(x::AbstractVector) where {T,V,S} = sum(c(x) for c in n.children)
+(n::Node{T,V,S,ProductNode})(x::AbstractMatrix) where {T,V,S} = sum(c(x) for c in n.children)
+
+partitionfunction(n::Node{T,V,S,ProductNode}) where {T,V,S} = sum(partitionfunction(c) for c in n.children)
 
 Sum(ns::AbstractNode...) = Sum(Float32, ns...)
 function Sum(::Type{T}, ns::AbstractNode...; init = (y) -> log.(rand(Dirichlet(length(y), 1.0)))) where {T<:Number}
     return _build_node(SumNode, T.(init(ns)), ns...)
 end
-(n::Node{T,V,S,SumNode})(x::AbstractVector) where {T<:Number,V,S} = logsumexp(n.params[i]+c(x) for (i,c) in enumerate(n.children))
-(n::Node{T,V,S,SumNode})(x::AbstractMatrix) where {T<:Number,V,S} = logsumexp(mapreduce(((w,c),) -> w.+c(x), hcat, zip(n.params, n.children)), dims=2)
+(n::Node{T,V,S,SumNode})(x::AbstractVector) where {T,V,S} = logsumexp(n.params[i]+c(x) for (i,c) in enumerate(n.children))
+(n::Node{T,V,S,SumNode})(x::AbstractMatrix) where {T,V,S} = logsumexp(mapreduce(((w,c),) -> w.+c(x), hcat, zip(n.params, n.children)), dims=2)
+
+partitionfunction(n::Node{T,V,S,SumNode}) where {T,V,S} = logsumexp(n.params[i]+partitionfunction(c) for (i,c) in enumerate(n.children))
 
 # --
 # -- Leaf nodes --
 # --
 
-struct Leaf{T<:Union{Vector{Int},Int},D<:UnivariateDistribution} <: AbstractNode
-    scope::T
+struct Leaf{V<:Union{Vector{Int},Int},D<:UnivariateDistribution,P<:AbstractVector{<:Real}} <: AbstractNode
+    scope::V
     dist::D
+    params::P
 end
-Leaf(dist::UnivariateDistribution, scope::Int) = Leaf(scope, dist)
-Leaf(dist::UnivariateDistribution, scope...) = Leaf(unique(scope), dist)
+Leaf(dist::UnivariateDistribution, scope::Int) = Leaf(scope, dist, collect(params(dist)))
+Leaf(dist::UnivariateDistribution, scope...) = Leaf(unique(scope), dist, repeat(collect(params(dist)), length(unique(scope))))
 Leaf(dist::UnivariateDistribution, scope::AbstractRange) = Leaf(dist, collect(scope)...)
 
 function prettyprint(io::IO, node::Leaf{T,D}, level::Int) where {T,D}
@@ -114,17 +120,25 @@ function prettyprint(io::IO, node::Leaf{T,D}, level::Int) where {T,D}
 end
 descendants(n::Leaf, N2; level = Inf) = []
 
-(n::Leaf{Int,<:UnivariateDistribution})(x::T) where {T<:AbstractVector} = logpdf(n.dist, x[scope(n)])
-function (n::Leaf{Int,<:UnivariateDistribution})(x::T) where {T<:AbstractArray}
+evaldist(dist::D, params, x::T) where {D<:UnivariateDistribution,T<:Real} = T(logpdf(convert(D, params...), x))
+evaldist(dist::D, params, x::Missing) where {D<:UnivariateDistribution} = one(eltype(D))
+
+(n::Leaf{Int,<:UnivariateDistribution,P})(x::T) where {T<:AbstractVector,V<:Real,P} = evaldist(n.dist, n.params, x[scope(n)])
+function (n::Leaf{Int,D,P})(x::AbstractArray{T}) where {T<:Real,P,D<:UnivariateDistribution}
     scope(n) > size(x,1) && throw(ErrorException())
-    return logpdf(n.dist, view(x,scope(n),:))
+    return @inbounds logpdf(convert(D, n.params...), view(x,scope(n),:))
 end
 
-(n::Leaf{Vector{Int},<:UnivariateDistribution})(x::T) where {T<:AbstractVector} = sum(logpdf(n.dist, x[s]) for s in scope(n))
-function (n::Leaf{Vector{Int},<:UnivariateDistribution})(x::T) where {T<:AbstractArray}
+#evaldist(dist::T, params, x::D) where {T<:UnivariateDistribution,D<:Number} = logpdf(convert(T, params...), x)
+#evaldist(dist::T, params, x::Missing) where {T<:UnivariateDistribution} = one(eltype(dist))
+
+(n::Leaf{Vector{Int},<:UnivariateDistribution,P})(x::T) where {T<:AbstractVector,P} = sum(logpdf(n.dist, x[s]) for s in scope(n))
+function (n::Leaf{Vector{Int},<:UnivariateDistribution,P})(x::T) where {T<:AbstractArray,P}
     maximum(scope(n)) > size(x,1) && throw(ErrorException())
     return sum(logpdf(n.dist, view(x,s,:)) for s in scope(n))
 end
+
+partitionfunction(l::Leaf{V,D,P}) where {V,D,P<:AbstractVector} = one(eltype(P))
 
 scope(n::AbstractNode) = n.scope
 
@@ -201,8 +215,8 @@ isdeterministic(n::AbstractNode) = false
 
 Return the support of the node
 """
-support(n::Leaf{Int,T}) where T = n.scope => Distributions.support(n.dist)
-support(n::Leaf{<:AbstractVector,T}) where T = [s => Distributions.support(n.dist) for s in n.scope]
+support(n::Leaf{Int,D,P}) where {D,P} = n.scope => Distributions.support(n.dist)
+support(n::Leaf{<:AbstractVector,D,P}) where {D,P} = [s => Distributions.support(n.dist) for s in n.scope]
 support(n::Node{T,Int,S,N}) where {T,S<:Union{Distributions.RealInterval,Vector{Int}},N} = [n.scope => n.support]
 support(n::Node{T,<:AbstractVector,S,N}) where {T,S,N} = [s => sup for (s, sup) in zip(n.scope, n.support)]
 

@@ -23,5 +23,6 @@ end
 
 # includes
 include("types.jl")
+include("optimize.jl")
 
 end
