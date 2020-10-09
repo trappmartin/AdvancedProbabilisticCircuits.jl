@@ -101,3 +101,24 @@ end
 
 lineplot(values)
 ```
+
+After optimization, the resulting circuit should look similar to:
+
+```julia
+(+) (
+0.43 × (×) (
+        (+) (
+        0.339 ×         (×) (
+                TruncatedNormal[(μ = 0.2632989915560352, σ = 2.382310506673276, min = 2.220446049250313e-16, max = Inf)] - scope: 1, 
+                TruncatedNormal[(μ = 0.18073477432822802, σ = 1.4408260826173522, min = 2.220446049250313e-16, max = Inf)] - scope: 2), 
+        0.333 ×         (×) (
+                TruncatedNormal[(μ = 0.0, σ = 1.0, min = -Inf, max = 0)] - scope: 1, 
+                TruncatedNormal[(μ = 0.0, σ = 1.0, min = -Inf, max = 0)] - scope: 2     )       ), 
+        Normal[(μ = 0.1738561801760675, σ = 1.654385423083228)] - scope: 3, 
+        Normal[(μ = 0.06158775377035022, σ = 1.0158713531454664)] - scope: 4), 
+1.106 × (×) (
+        Normal[(μ = 1.1542622026997085, σ = 3.747453345484773)] - scope: 1, 
+        Normal[(μ = 1.3191340405400875, σ = 2.0246776684705585)] - scope: 2, 
+        Normal[(μ = 1.146697247351322, σ = 2.802238408757326)] - scope: 3, 
+        Normal[(μ = 1.0225365827958446, σ = 0.848282907572307)] - scope: 4))
+```
