@@ -1,20 +1,20 @@
-# ProbabilisticCircuits
-[![Build Status](https://travis-ci.org/trappmartin/ProbabilisticCircuits.jl.svg?branch=master)](https://travis-ci.org/trappmartin/ProbabilisticCircuits.jl)
-[![codecov](https://codecov.io/gh/trappmartin/ProbabilisticCircuits.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/trappmartin/ProbabilisticCircuits.jl)
+# AdvancedProbabilisticCircuits.jl
+[![Build Status](https://travis-ci.org/trappmartin/AdvancedProbabilisticCircuits.jl.svg?branch=master)](https://travis-ci.org/trappmartin/AdvancedProbabilisticCircuits.jl)
+[![codecov](https://codecov.io/gh/trappmartin/AdvancedProbabilisticCircuits.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/trappmartin/AdvancedProbabilisticCircuits.jl)
 
-`ProbabilisticCircuits.jl` is a package for building probabilistic circuits and performing probabilistic reasoning.
+`AdvancedProbabilisticCircuits.jl` is a package for probabilistic modelling and inference using probabilistic circuits.
 
 Warning: This package is under heavy development and things might easily change!
 
 ## Installation
-This package is currently not registered. To install `ProbabilisticCircuits.jl` either clone the package manually or add it using the Julia package manage using: `Pkg.add(url="https://github.com/trappmartin/ProbabilisticCircuits.jl")`.
+This package is currently not registered. To install `AdvancedProbabilisticCircuits.jl` either clone the package manually or add it using the Julia package manage using: `Pkg.add(url="https://github.com/trappmartin/AdvancedProbabilisticCircuits.jl")`.
 
 ## Getting Started
 
 The following example illustrates the construction of a probabilistic circuit and its use for density estimation.
 
 ```julia
-using ProbabilisticCircuits, MLDatasets
+using AdvancedProbabilisticCircuits, MLDatasets
 
 # download Iris dataset if necessary
 # Iris.download()

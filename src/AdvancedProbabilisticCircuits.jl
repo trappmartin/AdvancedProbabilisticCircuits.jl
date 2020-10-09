@@ -1,4 +1,4 @@
-module ProbabilisticCircuits
+module AdvancedProbabilisticCircuits
 
 using MLStyle
 using StatsFuns
