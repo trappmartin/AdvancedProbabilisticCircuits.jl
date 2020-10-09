@@ -29,7 +29,7 @@ The function turns:
 into
 
 ```julia
-struct RNorm{P} <: ProbabilisticCircuits.AbstractLeaf
+struct RNorm{P} <: AdvancedProbabilisticCircuits.AbstractLeaf
     scope::Int
     params::P
 end
@@ -61,7 +61,7 @@ function _leaf(expr)
         end
 
         q = quote
-            struct $n{P} <: ProbabilisticCircuits.AbstractLeaf
+            struct $n{P} <: AdvancedProbabilisticCircuits.AbstractLeaf
                 scope::Int
                 params::P
             end
