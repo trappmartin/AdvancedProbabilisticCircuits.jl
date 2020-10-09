@@ -5,11 +5,10 @@ version = "0.1.0"
 
 [deps]
 Crayons = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
-Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 MLDatasets = "eb30cadb-4394-5ae3-aed4-317e484a6458"
+MLStyle = "d8e11817-5142-5d16-987a-aa16d5891078"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
-Pluto = "c3e4b0f8-55cb-11ea-2926-15256bba5781"
-Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
+Parameters = "d96e819e-fc66-5662-9728-84c9c7592b0a"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 StatsFuns = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
 UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"

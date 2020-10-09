@@ -21,75 +21,83 @@ using ProbabilisticCircuits, MLDatasets
 
 X = Iris.features()
 
-# manually define a simple probabilistic circuit
+# we can create a leaf node by passing the required scope as an argument
+l = Normal(1) # Normal with scope = 1
+
+# we can create a product node with a specific partition using
+p = Prod(TruncatedNormal(1, min=eps()), TruncatedNormal(2, min=eps()))
+
+# or with the following shorthands 
+partition = [1,2]
+p = Prod(Normal, partition)
+p = Prod((s)->TruncatedNormal(s, min=eps()), partition)
+
+# we can create a sum nodes the same way as a product node, i.e.
+s = Sum(TruncatedNormal(1, min=eps()), TruncatedNormal(1, min=eps()))
+
+# or using
+K, scope = 2, 1
+p = Sum(Normal, scope, K)
+s = Sum((k)->Prod((s)->TruncatedNormal(s, min=eps()), partition), K)
+
+# now lets construct a simple circuit
 
 pc = Sum( 
         Prod( 
-            Sum(Leaf(truncated(Normal(), 0, Inf), 1:2), Leaf(truncated(Normal(), 0, Inf), 1:2)), 
-            Leaf(truncated(Normal(), 0, Inf), 3:4)), 
-        Leaf(truncated(Normal(), 0, Inf), 1:4))
+            Sum(Prod((s)->TruncatedNormal(s, min=eps()), [1,2]), 
+                Prod((s)->TruncatedNormal(s, max=0), [1,2])), 
+            Prod(Normal, [3,4])), 
+        Prod(Normal, [1,2,3,4]))
 ```
-Once defined the probabilistic circuit, you should see the respective circuit in a more amendable form displayed in the REPL:
+
+Once the probabilistic circuit is defined, you should see the circuit in a more amendable form displayed in the REPL, e.g.:
 
 ```julia
 (+) (
-0.902 × (x) (
-    (+) (
-    0.228 ×     Truncated{Normal{Float64},Continuous,Float64} - scope: [1, 2],
-    0.772 ×     Truncated{Normal{Float64},Continuous,Float64} - scope: [1, 2]),
-    Truncated{Normal{Float64},Continuous,Float64} - scope: [3, 4]),
-0.098 × Truncated{Normal{Float64},Continuous,Float64} - scope: [1, 2, 3, 4])
+0.761 × (×) (
+        (+) (
+        0.41 ×  (×) (
+                TruncatedNormal[(μ = 0.0, σ = 1.0, min = 2.220446049250313e-16, max = Inf)] - scope: 1, 
+                TruncatedNormal[(μ = 0.0, σ = 1.0, min = 2.220446049250313e-16, max = Inf)] - scope: 2  ), 
+        0.254 ×         (×) (
+                TruncatedNormal[(μ = 0.0, σ = 1.0, min = -Inf, max = 0)] - scope: 1, 
+                TruncatedNormal[(μ = 0.0, σ = 1.0, min = -Inf, max = 0)] - scope: 2     )       ), 
+        Normal[(μ = 0.0, σ = 1.0)] - scope: 3, 
+        Normal[(μ = 0.0, σ = 1.0)] - scope: 4), 
+0.33 × (×) (
+        Normal[(μ = 0.0, σ = 1.0)] - scope: 1, 
+        Normal[(μ = 0.0, σ = 1.0)] - scope: 2, 
+        Normal[(μ = 0.0, σ = 1.0)] - scope: 3, 
+        Normal[(μ = 0.0, σ = 1.0)] - scope: 4))
 ```
-Note that the colour coding of the nodes, e.g. `(+)` and `(x)`, indicate the nodes properties.
 
-We can evaluate the log density of the dataset by calling the circuit on the data, i.e.
+Note that the colour coding of the nodes indicate the nodes properties.
+We can evaluate the (unnormalize) log density of the dataset by calling the `logpdf` of the circuit and compute the normalized log likelihood using `loglikelihood`, i.e.
 
 ```julia
 using Statistics
 
-llh(model, x) = mean(model(x[:,i]) - partitionfunction(model) for i in 1:size(x,2))
+lp = logpdf(pc, X)
+
+llh(model, x) = mean(loglikelihood(model, x))
 @show llh(pc, X)
 ```
-Alternatively we can also call: `pc(X)` to evaluate all observations at once.
 
 We can optimise the paramters using Zygote as follows:
 
 ```julia
 using Zygote, UnicodePlots
 
-iters = 20
+iters = 20 # number of iterations
+η = 0.1 # learning rate
+
 values = zeros(iters)
 
 for i in 1:iters
     grads = Zygote.gradient(m -> llh(m, X), pc)[1]
-    update!(pc, grads; η = 1.0)
+    update!(pc, grads; η = η)
     values[i] = llh(pc, X)
 end
 
 lineplot(values)
 ```
-which should result in a result similar to:
-
-```julia
-         ┌────────────────────────────────────────┐
-   -33.7 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⠤⠤⠤⠤⠤⠔⠒⠒⠒⠒⠒⠒⠒│
-         │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠔⠒⠉⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠔⠊⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡰⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡜⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡰⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⠀⠀⠀⠀⠀⠀⢀⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⠀⠀⠀⠀⠀⢀⡎⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⠀⠀⠀⠀⢀⠎⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⠀⠀⠀⢀⠎⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⠀⠀⡠⠊⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         │⠀⠀⡠⠊⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-   -34.6 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-         └────────────────────────────────────────┘
-         0                                       20
-
-```
-
-Note: This approach will currently only update internal node parameters.
