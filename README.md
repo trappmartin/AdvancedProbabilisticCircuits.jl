@@ -122,3 +122,37 @@ After optimization, the resulting circuit should look similar to:
         Normal[(μ = 1.146697247351322, σ = 2.802238408757326)] - scope: 3, 
         Normal[(μ = 1.0225365827958446, σ = 0.848282907572307)] - scope: 4))
 ```
+
+## Adding additional leaf nodes
+This package provides a few standard leaf nodes, i.e.
+
+```julia
+Normal # univariate Gaussian
+TruncatedNormal # truncated univariate Gaussian
+Indicator # indicator function
+```
+
+and we can easily extend the set of leaf nodes using the `@leaf` macro:
+
+```julia
+using SpecialFunctions # required for logbeta
+
+# define a Beta distribution with default values
+@leaf Beta(α = 1.0, β = 1.0)
+
+# define the log density function
+function logpdf(n::Beta{P}, x::Real) where {P<:NamedTuple{(:α, :β)}}
+    return (n.params.α - 1) * log(x) + (n.params.β - 1) * log1p(-x) - logbeta(n.params.α, n.params.β)
+end
+
+# define support
+support(::Beta) = RealInterval(0.0, 1.0)
+```
+
+Now we can use a Beta distribution as a leaf node in a probabilistic circuit, e.g.
+
+```julia
+pc = Sum(Beta(1), Beta(1, α = 0.5), Beta(1, α = 0.5, β = 0.5), Normal(1))
+```
+
+Note that we may additionally want to define the adjoint for Zygote, if necessary. We refer to the Zygote documentation on this.
