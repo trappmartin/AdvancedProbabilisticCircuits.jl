@@ -146,7 +146,7 @@ function logpdf(n::Beta{P}, x::Real) where {P<:NamedTuple{(:α, :β)}}
 end
 
 # define support
-support(::Beta) = RealInterval(0.0, 1.0)
+support(n::Beta) = (n.scope => RealInterval(0.0, 1.0))
 ```
 
 Now we can use a Beta distribution as a leaf node in a probabilistic circuit, e.g.
