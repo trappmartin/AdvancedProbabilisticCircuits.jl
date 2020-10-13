@@ -86,20 +86,22 @@ llh(model, x) = mean(loglikelihood(model, x))
 We can optimise the paramters using Zygote as follows:
 
 ```julia
-using Zygote, UnicodePlots
+using Zygote # used for AD 
+using ProgressMeter, Plots # visualisation of progress & results
 
 iters = 20 # number of iterations
 η = 0.1 # learning rate
 
+# results
 values = zeros(iters)
 
-for i in 1:iters
+@showprogress for i in 1:iters
     grads = Zygote.gradient(m -> llh(m, X), pc)[1]
     update!(pc, grads; η = η)
     values[i] = llh(pc, X)
 end
 
-lineplot(values)
+plot(values)
 ```
 
 After optimization, the resulting circuit should look similar to:
@@ -135,24 +137,42 @@ Indicator # indicator function
 and we can easily extend the set of leaf nodes using the `@leaf` macro:
 
 ```julia
+import AdvancedProbabilisticCircuits.support 
 using SpecialFunctions # required for logbeta
 
 # define a Beta distribution with default values
-@leaf Beta(α = 1.0, β = 1.0)
+@leaf Beta(α = 1.0, β = 1.0) RealInterval(0.0, 1.0)
 
 # define the log density function
 function logpdf(n::Beta{P}, x::Real) where {P<:NamedTuple{(:α, :β)}}
     return (n.params.α - 1) * log(x) + (n.params.β - 1) * log1p(-x) - logbeta(n.params.α, n.params.β)
 end
-
-# define support
-support(n::Beta) = (n.scope => RealInterval(0.0, 1.0))
 ```
+
+If necessary, we can also call `@leaf Beta(α = 1.0, β = 1.0)` instead and define the support manually. See `? @leaf` for an example. Note that this package currently only supports univariate leaves.
 
 Now we can use a Beta distribution as a leaf node in a probabilistic circuit, e.g.
 
 ```julia
-pc = Sum(Beta(1), Beta(1, α = 0.5), Beta(1, α = 0.5, β = 0.5), Normal(1))
+pc = Sum(Beta(1), Beta(1, α = 0.5), Beta(1, α = 0.5, β = 0.5), Normal(1));
 ```
 
 Note that we may additionally want to define the adjoint for Zygote, if necessary. We refer to the Zygote documentation on this.
+
+## Adding additional internal nodes
+The package proved sum and product nodes as internal nodes, but can easily be extended.
+For example, one can implement a custom internal node as follows:
+
+```julia
+# sub-type NodeTypes to define a new node type
+struct CustomProdNode <: NodeType end
+
+# define custom node type constructor
+function CPNode(::Type{T}, ns::AbstractNode...) where T<:Real
+    parameters = rand(T, length(ns)) # every internal node has parameters (optional)
+    return AdvancedProbabilisticCircuits._build_node(CustomProdNode, parameters, ns...)
+end
+
+# define custom log density function
+logpdf(n::Node{T,V,S,P,CustomProdNode}, x) where {T,V,S,P} = sum(logpdf(children(n),Ref(x)))
+```

@@ -1,7 +1,7 @@
 """
     _build_node
 
-Internal function to construct an internal node of a probabilistic circuit.
+Function to construct an internal node of a probabilistic circuit.
 """
 function _build_node(::Type{N}, params::T, ns::AbstractNode...) where {T<:AbstractVector{<:Real},N<:NodeType}
     children = collect(ns)
@@ -23,46 +23,43 @@ end
 # Default Internal Nodes
 # --
 
+# product node
 Prod(t::Type{<:AbstractNode}, partition::Vector) = Prod([t(s) for s in partition]...)
 Prod(f::Function, partition::Vector) = Prod([f(s) for s in partition]...)
-
 Prod(ns::AbstractNode...) = Prod(Float32, ns...)
-function Prod(::Type{T}, ns::AbstractNode...) where {T<:Number}
+function Prod(::Type{T}, ns::AbstractNode...) where {T<:Real}
     nodes = mapreduce(n -> isproduct(n) ? children(n) : n, vcat, ns)
     return _build_node(ProductNode, T[], nodes...)
 end
-logpdf(n::Node{T,V,S,P,ProductNode}, x) where {T,V,S,P} = sum(logpdf(c,x) for c in n.children)
-(n::Node{T,V,S,P,ProductNode})(x) where {T,V,S,P} = logpdf(n,x)
 
-partitionfunction(n::Node{V,S,T,P,ProductNode}) where {T,V,S,P} = sum(partitionfunction(c) for c in n.children)
+isproduct(n::Node{V,S,T,P,ProductNode}) where {V,T,S,P} = true
+isproduct(n::Node{V,S,T,P,N}) where {V,T,S,P,N} = false
+isproduct(n::T) where {T<:AbstractLeaf} = false
 
+logpdf(n::Node{T,V,S,P,ProductNode}, x) where {T,V,S,P} = sum(logpdf.(children(n),Ref(x)))
+
+# sum node
 Sum(t::Type{<:AbstractNode}, scope, K::Int) = Sum([t(scope) for k in 1:K]...)
 Sum(f::Function, K::Int) = Sum([f(k) for k in 1:K]...)
 
 Sum(ns::AbstractNode...) = Sum(Float32, ns...)
-function Sum(::Type{T}, ns::AbstractNode...; init = (y) -> log.(rand(length(y)))) where {T<:Number}
+function Sum(::Type{T}, ns::AbstractNode...; init = (y) -> log.(rand(length(y)))) where {T<:Real}
     return _build_node(SumNode, T.(init(ns)), ns...)
 end
 function logpdf(n::Node{T,V,S,P,SumNode}, x) where {T,V,S,P} 
     return logsumexp(n.params[i]+logpdf(c,x) for (i,c) in enumerate(n.children))
 end
-function logpdf(n::Node{T,V,S,P,SumNode}, x::AbstractMatrix) where {T,V,S,P} 
-    return map(j -> logsumexp(n.params[i]+logpdf(c,view(x,:,j)) for (i,c) in enumerate(n.children)), 1:size(x,2))
+function logpdf(n::Node{T,V,S,P,SumNode}, x::AbstractMatrix) where {T,V,S,P}
+    lp = logpdf.(children(n), Ref(x))
+    return logsumexp(mapreduce(i -> n.params[i] .+ lp[i], hcat, 1:length(lp)), dims=2)
 end
-(n::Node{T,V,S,P,SumNode})(x) where {T,V,S,P} = logpdf(n, x)
-
-partitionfunction(n::Node{T,V,S,P,SumNode}) where {T,V,S,P} = logsumexp(n.params[i]+partitionfunction(c) for (i,c) in enumerate(n.children))
 
 # --
 # Default leaf nodes
 # --
 
-logpdf(n::T, x::AbstractVector{<:Real}) where {T<:AbstractLeaf} = logpdf(n, x[n.scope])
-logpdf(n::T, x::AbstractMatrix{<:Real}) where {T<:AbstractLeaf} = @inbounds logpdf.(Ref(n), view(x,n.scope,:))
-
-@leaf Normal(μ=0.0, σ=1.0)
+@leaf Normal(μ=0.0, σ=1.0) RealInterval(-Inf, Inf)
 logpdf(n::Normal{P}, x::Real) where {P<:NamedTuple{(:μ, :σ)}} = -log(n.params.σ) - (x-n.params.μ)^2 / (2 * n.params.σ^2)
-support(n::Normal) = (n.scope => RealInterval(-Inf, Inf))
 
 @leaf Indicator(v = 1)
 logpdf(n::Indicator{P}, x::Real) where {P<:NamedTuple{(:v,)}} = n.params.v == x ? 0 : -Inf

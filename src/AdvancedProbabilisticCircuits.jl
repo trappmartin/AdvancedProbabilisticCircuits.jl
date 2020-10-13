@@ -8,7 +8,7 @@ using Crayons.Box
 import Base.show
 
 export Prod, Sum, Normal, TruncatedNormal, Indicator
-export Node, SumNode, ProductNode
+export Node, SumNode, ProductNode, NodeType
 export RealInterval
 export Decomposability, Smoothness, Determinism, Invertability, NodeProperties
 export support, scope, loglikelihood, params, descendants
@@ -49,22 +49,19 @@ end
 children(n::Node) = n.children
 scope(n::T) where {T<:AbstractNode} = n.scope
 params(n::T) where {T<:AbstractNode} = n.params
+
 partitionfunction(n::T) where {T<:AbstractLeaf} = 1.0
+partitionfunction(n::N) where {N<:Node} = logpdf(n, missing)
 
 support(n::Node{Int,S,T,P,N}) where {T,S,P,N} = [n.scope => n.support]
 support(n::Node{Vector{Int},S,T,P,N}) where {T,S,P,N} = [s => sup for (s, sup) in zip(n.scope, n.support)]
 
+logpdf(n::T, x::Missing) where {T<:AbstractLeaf} = 1.0
+logpdf(n::T, x::AbstractVector{<:Real}) where {T<:AbstractLeaf} = logpdf(n, x[n.scope])
+logpdf(n::T, x::AbstractMatrix{<:Real}) where {T<:AbstractLeaf} = @inbounds logpdf.(Ref(n), view(x,n.scope,:))
+
 loglikelihood(n::T, x::X) where {T<:AbstractNode, X<:Real} = logpdf(n, x) - partitionfunction(n)
 loglikelihood(n::T, x::X) where {T<:AbstractNode, X<:AbstractArray} = logpdf(n, x) .- partitionfunction(n)
-
-isproduct(n::Node{V,S,T,P,ProductNode}) where {V,T,S,P} = true
-isproduct(n::Node{V,S,T,P,N}) where {V,T,S,P,N} = false
-isproduct(n::T) where {T<:AbstractLeaf} = false
-
-issum(n::Node{V,S,T,P,SumNode}) where {V,T,S,P} = true
-issum(n::Node{V,S,T,P,N}) where {V,T,S,P,N} = false
-issum(n::T) where {T<:AbstractLeaf} = false
-
 
 # includes
 include("macros.jl")
