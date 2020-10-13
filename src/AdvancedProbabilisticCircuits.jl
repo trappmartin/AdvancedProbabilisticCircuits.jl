@@ -53,12 +53,12 @@ params(n::T) where {T<:AbstractNode} = n.params
 partitionfunction(n::T) where {T<:AbstractLeaf} = 1.0
 partitionfunction(n::N) where {N<:Node} = logpdf(n, missing)
 
-support(n::Node{Int,S,T,P,N}) where {T,S,P,N} = [n.scope => n.support]
+support(n::Node{Int,S,T,P,N}) where {T,S,P,N} = (n.scope => n.support)
 support(n::Node{Vector{Int},S,T,P,N}) where {T,S,P,N} = [s => sup for (s, sup) in zip(n.scope, n.support)]
 
 logpdf(n::T, x::Missing) where {T<:AbstractLeaf} = 1.0
 logpdf(n::T, x::AbstractVector{<:Real}) where {T<:AbstractLeaf} = logpdf(n, x[n.scope])
-logpdf(n::T, x::AbstractMatrix{<:Real}) where {T<:AbstractLeaf} = @inbounds logpdf.(Ref(n), view(x,n.scope,:))
+logpdf(n::T, x::AbstractMatrix{<:Real}) where {T<:AbstractLeaf} = @inbounds @views logpdf.(Ref(n), x[:,n.scope])
 
 loglikelihood(n::T, x::X) where {T<:AbstractNode, X<:Real} = logpdf(n, x) - partitionfunction(n)
 loglikelihood(n::T, x::X) where {T<:AbstractNode, X<:AbstractArray} = logpdf(n, x) .- partitionfunction(n)
@@ -70,5 +70,6 @@ include("properties.jl")
 include("optimize.jl")
 include("util.jl")
 include("print.jl")
+include("math.jl")
 
 end

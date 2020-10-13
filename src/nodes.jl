@@ -46,28 +46,39 @@ Sum(ns::AbstractNode...) = Sum(Float32, ns...)
 function Sum(::Type{T}, ns::AbstractNode...; init = (y) -> log.(rand(length(y)))) where {T<:Real}
     return _build_node(SumNode, T.(init(ns)), ns...)
 end
+
+"""
+    _fast_logpdf(n, x)
+
+More efficient evaluation of a sum node using log(sum(exp(x + log(w)))) based on:
+[Sebastian Nowozin: Streaming Log-sum-exp Computation.](http://www.nowozin.net/sebastian/blog/streaming-log-sum-exp-computation.html)
+"""
+function _fast_logpdf(n::Node{T,V,S,P,SumNode}, x) where {T,V,S,P} 
+    cs = children(n)
+    xmax_r = mapreduce(i -> logpdf(cs[i], x) .+ n.params[i], _logsumexp_onepass_op, 1:length(cs))
+    return first(xmax_r) .+ log1p.(last(xmax_r))
+end
 function logpdf(n::Node{T,V,S,P,SumNode}, x) where {T,V,S,P} 
     return logsumexp(n.params[i]+logpdf(c,x) for (i,c) in enumerate(n.children))
 end
-function logpdf(n::Node{T,V,S,P,SumNode}, x::AbstractMatrix) where {T,V,S,P}
-    lp = logpdf.(children(n), Ref(x))
-    return logsumexp(mapreduce(i -> n.params[i] .+ lp[i], hcat, 1:length(lp)), dims=2)
-end
+logpdf(n::Node{T,V,S,P,SumNode}, x::AbstractMatrix) where {T,V,S,P} = _fast_logpdf(n,x)
 
 # --
 # Default leaf nodes
 # --
 
+logpdfnormal(μ, σ, x) = -log(σ) - (log2π + ((x-μ) / σ)^2)/2
+
 @leaf Normal(μ=0.0, σ=1.0) RealInterval(-Inf, Inf)
-logpdf(n::Normal{P}, x::Real) where {P<:NamedTuple{(:μ, :σ)}} = -log(n.params.σ) - (x-n.params.μ)^2 / (2 * n.params.σ^2)
+logpdf(n::Normal{P}, x::Real) where {P<:NamedTuple{(:μ, :σ)}} = logpdfnormal(n.params.μ, n.params.σ, x)
 
 @leaf Indicator(v = 1)
-logpdf(n::Indicator{P}, x::Real) where {P<:NamedTuple{(:v,)}} = n.params.v == x ? 0 : -Inf
-support(n::Indicator{P}) where {P<:NamedTuple{(:v,)}} = (n.scope => [n.params.v])
+logpdf(n::Indicator{P}, x::Real) where {P<:Real} = n.params == x ? 0 : -Inf
+support(n::Indicator{P}) where {P<:Real} = (n.scope => [n.params])
 
 @leaf TruncatedNormal(μ = 0.0, σ = 1.0, min = -Inf, max = Inf)
 function logpdf(n::TruncatedNormal{P}, x::Real) where {P<:NamedTuple{(:μ, :σ, :min, :max)}}
-    return (x >= n.params.min) && (x < n.params.max) ? -log(n.params.σ) - (x-n.params.μ)^2 / (2 * n.params.σ^2) : -Inf
+    return (x >= n.params.min) && (x < n.params.max) ? logpdfnormal(n.params.μ, n.params.σ, x) : -Inf
 end
 function support(n::TruncatedNormal{P}) where {P<:NamedTuple{(:μ, :σ, :min, :max)}}
     return (n.scope => RealInterval(n.params.min, n.params.max))

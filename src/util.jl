@@ -11,6 +11,15 @@ function joinsupport(l1::AbstractNode, l2::AbstractNode)
     end
 end
 
+function joinsupport(l1::Pair{Int,T}, l2::AbstractNode) where {T}
+    scope, _ = l1
+    if scope != l2.scope
+        return joinsupport_(l1, support(l2))
+    else
+        return join_(l1, support(l2))
+    end
+end
+
 joinsupport_(l1::Pair{Int,T1}, l2::Pair{Int,T2}) where {T1,T2} = [l1, l2]
 joinsupport_(l1::Vector{Pair{Int,T1}}, l2::Pair{Int,T2}) where {T1,T2} = joinsupport_(l2,l1)
 function joinsupport_(l1::Pair{Int,T1}, supp::Vector{Pair{Int,T2}}) where {T1,T2}
