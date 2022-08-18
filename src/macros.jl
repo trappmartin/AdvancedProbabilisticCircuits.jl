@@ -4,11 +4,11 @@ export @leaf
 function capture(template, ex, action)
     let template = Expr(:quote, template)
         quote
-            @match $ex begin 
+            @match $ex begin
                 $template => $action
                 _         => nothing
             end
-        end 
+        end
     end
 end
 
@@ -18,7 +18,7 @@ end
 
 """
     _leaf(expr)
- 
+
 This function is called by the `@leaf` macro.
 The function turns:
 
@@ -90,7 +90,7 @@ end
 
 """
     _leaf(expr)
- 
+
 This function is called by the `@leaf` macro.
 The function turns:
 

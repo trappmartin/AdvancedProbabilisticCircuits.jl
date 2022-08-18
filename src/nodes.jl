@@ -19,6 +19,21 @@ function _build_node(::Type{N}, params::T, ns::AbstractNode...) where {T<:Abstra
     return Node{typeof(scope_),typeof(support_),T,typeof((prop_...,)),N}(scope_, support_, children, params, (prop_...,))
 end
 
+function _build_node(::Type{N}, params::T, child::AbstractNode) where {T<:AbstractVector{<:Real},N<:NodeType}
+    s_ = scope(child)
+    scope_ = length(s_) == 1 ? first(s_) : s_
+    prop_ = NodeProperties[]
+
+    push!(prop_, Smoothness())
+    push!(prop_, Decomposability())
+    push!(prop_, Determinism())
+    supports_ = Dict(support(child))
+
+    support_ = scope_ isa Int ? supports_[scope_] : [supports_[s] for s in scope_]
+
+    return Node{typeof(scope_),typeof(support_),T,typeof((prop_...,)),N}(scope_, support_, [child], params, (prop_...,))
+end
+
 # --
 # Default Internal Nodes
 # --
@@ -43,6 +58,7 @@ Sum(t::Type{<:AbstractNode}, scope, K::Int) = Sum([t(scope) for k in 1:K]...)
 Sum(f::Function, K::Int) = Sum([f(k) for k in 1:K]...)
 
 Sum(ns::AbstractNode...) = Sum(Float32, ns...)
+Sum(n::AbstractNode) = Sum(Float32, n)
 function Sum(::Type{T}, ns::AbstractNode...; init = (y) -> log.(rand(length(y)))) where {T<:Real}
     return _build_node(SumNode, T.(init(ns)), ns...)
 end
