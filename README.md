@@ -14,12 +14,12 @@ This package is currently not registered. To install `AdvancedProbabilisticCircu
 The following example illustrates the construction of a probabilistic circuit and its use for density estimation.
 
 ```julia
-using AdvancedProbabilisticCircuits, MLDatasets
+using AdvancedProbabilisticCircuits, MLDatasets, DataFrames
 
 # download Iris dataset if necessary
-# Iris.download()
+# Iris()
 
-X = Iris.features()
+X = Iris(as_df=false).features
 
 # we can create a leaf node by passing the required scope as an argument
 l = Normal(1) # Normal with scope = 1
@@ -97,7 +97,7 @@ values = zeros(iters)
 
 @showprogress for i in 1:iters
     grads = Zygote.gradient(m -> llh(m, X), pc)[1]
-    update!(pc, grads; η = η)
+    AdvancedProbabilisticCircuits.update!(pc, grads; η = η)
     values[i] = llh(pc, X)
 end
 
